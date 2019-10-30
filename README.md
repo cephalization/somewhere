@@ -7,5 +7,5 @@ This can be used to avoid CORS errors as the SPA can make requests to this serve
 ## Development
 
 - Install go and configure workspace
-- `go get -u https://github.com/cephalization/somewhere`
+- `go get -u github.com/cephalization/somewhere`
 - `cd $GOPATH/github.com/cephalization/somewhere`

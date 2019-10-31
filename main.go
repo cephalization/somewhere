@@ -1,11 +1,12 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"path/filepath"
 	"time"
@@ -25,6 +26,10 @@ func usage() {
 
 // Parse and map arguments for later usage
 func setupArgs() (map[string]interface{}, error) {
+	proxyPrefix := flag.String("prefix", "api", "route prefix that will be proxied. All other routes will be served the SPA")
+	proxyScheme := flag.String("pscheme", "http://", "target host scheme to proxy api requests to (ex. 'https://')")
+	proxyHost := flag.String("phost", "0.0.0.0", "target host to proxy api requests to")
+	proxyPort := flag.String("pport", "8081", "target port to proxy api requests to")
 	port := flag.String("port", "8080", "port to run server on")
 	host := flag.String("host", "0.0.0.0", "host to run server on")
 
@@ -36,14 +41,33 @@ func setupArgs() (map[string]interface{}, error) {
 		usage()
 	}
 
-	mapping := map[string]interface{}{"port": *port, "host": *host, "directory": dir}
+	mapping := map[string]interface{}{
+		"port":         *port,
+		"host":         *host,
+		"directory":    dir,
+		"proxy_host":   *proxyHost,
+		"proxy_port":   *proxyPort,
+		"proxy_scheme": *proxyScheme,
+		"proxy_prefix": *proxyPrefix,
+	}
 
 	return mapping, nil
 }
 
-// TODO: Contact remote server, return its results
+// Reverse proxy request to remote server
 func proxyHandler(w http.ResponseWriter, r *http.Request) {
-	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	urlString :=
+		config["proxy_scheme"].(string) +
+			config["proxy_host"].(string) + ":" +
+			config["proxy_port"].(string)
+	u, err := url.Parse(urlString)
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	httputil.NewSingleHostReverseProxy(u).ServeHTTP(w, r)
 }
 
 // Serve single page application static files
@@ -83,8 +107,11 @@ func main() {
 
 	r := mux.NewRouter()
 
+	prefix := config["proxy_prefix"].(string)
+
 	// Handle routes
-	r.HandleFunc("/api/{route}", proxyHandler)
+	r.HandleFunc("/"+prefix+"/", proxyHandler)
+	r.HandleFunc("/"+prefix+"/{route}", proxyHandler)
 	r.PathPrefix("/").HandlerFunc(spaHandler)
 
 	// Load config and start server

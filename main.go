@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -11,11 +12,11 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/cephalization/somewhere/configutil"
 	"github.com/gorilla/mux"
 )
 
-// Global config object with parsed and validated program
-var config map[string]interface{}
+var config *configutil.Config
 
 // Print usage message and then exit
 func usage() {
@@ -24,42 +25,12 @@ func usage() {
 	os.Exit(1)
 }
 
-// Parse and map arguments for later usage
-func setupArgs() (map[string]interface{}, error) {
-	proxyPrefix := flag.String("prefix", "api", "route prefix that will be proxied. All other routes will be served the SPA")
-	proxyScheme := flag.String("pscheme", "http://", "target host scheme to proxy api requests to (ex. 'https://')")
-	proxyHost := flag.String("phost", "0.0.0.0", "target host to proxy api requests to")
-	proxyPort := flag.String("pport", "8081", "target port to proxy api requests to")
-	port := flag.String("port", "8080", "port to run server on")
-	host := flag.String("host", "0.0.0.0", "host to run server on")
-
-	flag.Parse()
-
-	dir := flag.Arg(0)
-
-	if dir == "" {
-		usage()
-	}
-
-	mapping := map[string]interface{}{
-		"port":         *port,
-		"host":         *host,
-		"directory":    dir,
-		"proxy_host":   *proxyHost,
-		"proxy_port":   *proxyPort,
-		"proxy_scheme": *proxyScheme,
-		"proxy_prefix": *proxyPrefix,
-	}
-
-	return mapping, nil
-}
-
 // Reverse proxy request to remote server
 func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	urlString :=
-		config["proxy_scheme"].(string) +
-			config["proxy_host"].(string) + ":" +
-			config["proxy_port"].(string)
+		config.ProxyScheme +
+			config.ProxyHost + ":" +
+			config.ProxyPort
 	u, err := url.Parse(urlString)
 
 	if err != nil {
@@ -73,7 +44,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 // Serve single page application static files
 func spaHandler(w http.ResponseWriter, r *http.Request) {
 	// Load absolute path of the static directory
-	dir, err := filepath.Abs(config["directory"].(string))
+	dir, err := filepath.Abs(config.Directory)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	}
@@ -97,17 +68,20 @@ func spaHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	args, e := setupArgs()
+	c, e := configutil.ParseConfig()
 
 	if e != nil {
-		panic(e)
+		usage()
+	}
+	if !c.Initialized {
+		panic(errors.New("config not initialized. Exiting"))
 	}
 
-	config = args
+	config = c
 
 	r := mux.NewRouter()
 
-	prefix := config["proxy_prefix"].(string)
+	prefix := config.ProxyPrefix
 
 	// Handle routes
 	r.HandleFunc("/"+prefix+"/", proxyHandler)
@@ -115,8 +89,8 @@ func main() {
 	r.PathPrefix("/").HandlerFunc(spaHandler)
 
 	// Load config and start server
-	host := config["host"].(string)
-	port := config["port"].(string)
+	host := config.Host
+	port := config.Port
 	srv := http.Server{
 		Handler:      r,
 		Addr:         host + ":" + port,

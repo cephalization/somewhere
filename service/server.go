@@ -98,8 +98,7 @@ func (s *Server) Serve() error {
 	prefix := config.ProxyPrefix
 
 	// Handle routes
-	r.HandleFunc("/"+prefix+"/", s.proxyHandler)
-	r.HandleFunc("/"+prefix+"/{route}", s.proxyHandler)
+	r.PathPrefix("/" + prefix).HandlerFunc(s.proxyHandler)
 	r.PathPrefix("/").HandlerFunc(s.spaHandler)
 
 	// Load config and start server
